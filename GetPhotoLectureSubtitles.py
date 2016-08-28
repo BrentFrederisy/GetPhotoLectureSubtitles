@@ -1,37 +1,71 @@
+"""
+	GetPhotoLecturesSubtitles - A commandline application to download the subtitles for the Photography A130 Lectures hosted on 3mediasolutions.com
+
+	Takes a txt file as a commandline argument and writes the lectures subtitles to a txt file.
+"""
+
 import requests as rq
 import re
+from sys import argv
 
-# List of lectures to get the subtitles from
-lecturesToGetSubtitlesFromURL = ["http://www.3cmediasolutions.org/privid/41231?key=d2b884efdc6529642c1a81c9ffe5c538cb713420", "http://www.3cmediasolutions.org/privid/41232?key=6b39a65f2b0ba86e2ad72ad6195f9229ac01fea8", "http://www.3cmediasolutions.org/privid/41233?key=5c28088727277373db2cf85d7bcc1aec027886ef", "http://www.3cmediasolutions.org/privid/41234?key=d2f1e22ab36dc15817b47dee7a934fd465dd8b90", "http://www.3cmediasolutions.org/privid/41235?key=d1ac4b3370eda44f1a82959a253f90121bc06123", "http://www.3cmediasolutions.org/privid/41236?key=99740addbbebd99c6e9daa5d105d41dbb4b56076", "http://www.3cmediasolutions.org/privid/41237?key=a51c3b8565f39b07aee087498017996ae00aac3c", "http://www.3cmediasolutions.org/privid/41239?key=9a549032172c95d9b2ca0ca9bba706fdba2821f0", "http://www.3cmediasolutions.org/privid/41240?key=e3f6d41a666eebd6d911f601d933019deb2ad0fa"]
+from Exceptions import *
+from requests.exceptions import *
 
-outfile = open('PhotographyLecture0X.txt', 'w')
-print("Opening the output file")
+infile = open(argv[1], 'r')
+outfile = open('PhotographyLecture.txt', 'w')
 
-for lecture in lecturesToGetSubtitlesFromURL:
-	# Gets the page source code
-	lecturePageHTML = rq.get(lecture)
-	print("Lecture Accessed")
+currentLine = 0
 
-	# Finds the url for the subtitles
-	subtitleSource = re.search('file: \"(.+\.vtt)', lecturePageHTML.text)
-	print("Subtitles Found")
+for lecture in infile:
+	currentLine += 1
 
-	# Gets the text in the subtitles source
+	if lecture[-1] == '\n':
+		lecture = lecture[:-1] 
+
+	try:
+		lecturePageHTML = rq.get(lecture)
+
+		lecturePageHTML.raise_for_status()
+
+		print("Lecture Accessed")
+
+	except (ConnectionError, HTTPError, Timeout, TooManyRedirects):
+		print("ERROR ACCESSING LECTURE")
+
+		outfile.write("\nERROR ACCESSING LECTURE\n")
+
+		continue
+
+	try:
+		subtitleSource = re.search('file: \"(.+\.vtt)', lecturePageHTML.text)
+
+		if subtitleSource is None:
+			raise SubtitlesNotFoundError(currentLine)
+
+		print("Subtitles Found")
+
+	except SubtitlesNotFoundError:
+		print("ERROR SUBTITLES NOT FOUND")
+
+		outfile.write("\nERROR FINDING SUBTITLES\n")
+
+		continue
+
 	subtitleText = rq.get(subtitleSource.group(1)).text
 
-	# Text is filtered line by line
 	subtitleText = subtitleText.splitlines()
 
 	for line in subtitleText:
-		# Ignore the line if its a timestamp--timestamps contain "-->"
+		# timestamps contain "-->" and are to be ignored
 		if "-->" in line or len(line) == 0:
 			continue
 		else:
-			# Remove the metadata from the line
+			# Remove the metadata sometimes present on the line
 			newLine = line.replace("WEBVTT","").replace("&gt;&gt; ","")
+			
 			outfile.write(newLine)
 
-			# Add a space at the end if need-be
+			# Add a space at the end if needed
 			if len(newLine) > 0 and newLine[-1] != ' ':
 				outfile.write(' ')
 
